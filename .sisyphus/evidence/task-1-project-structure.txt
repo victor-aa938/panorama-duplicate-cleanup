@@ -1,0 +1,26 @@
+total 12
+drwxr-xr-x 1 admin admin  114 Feb 27 12:32 .
+drwxr-xr-x 1 admin admin  142 Feb 27 08:43 ..
+-rw-r--r-- 1 admin admin  390 Feb 27 12:31 .gitignore
+-rw-r--r-- 1 admin admin 2587 Feb 27 12:32 README.md
+-rw-r--r-- 1 admin admin  195 Feb 27 12:31 requirements.txt
+drwxr-xr-x 1 admin admin   38 Feb 27 12:31 .sisyphus
+drwxr-xr-x 1 admin admin   98 Feb 27 12:32 src
+drwxr-xr-x 1 admin admin   40 Feb 27 12:31 tests
+drwxr-xr-x 1 admin admin   22 Feb 27 12:31 utils
+.
+./.sisyphus
+./.sisyphus/drafts
+./.sisyphus/evidence
+./.sisyphus/plans
+./src
+./src/models
+./src/policies
+./src/__pycache__
+./src/services
+./src/utils
+./src/utils/__pycache__
+./tests
+./tests/mocks
+./tests/unit
+./utils

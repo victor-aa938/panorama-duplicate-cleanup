@@ -1,0 +1,37 @@
+usage: duplicate-service-cleanup [-h] --panorama-ip PANORAMA_IP
+                                 --username USERNAME [--password [PASSWORD]]
+                                 [--dry-run] [--commit]
+                                 [--backup-dir BACKUP_DIR]
+                                 [--log-level {DEBUG,INFO,WARNING,ERROR}]
+                                 [--log-file LOG_FILE] [--json-logging]
+                                 [--config CONFIG]
+
+Identify and clean up duplicate services in Palo Alto Panorama
+
+options:
+  -h, --help            show this help message and exit
+  --panorama-ip PANORAMA_IP
+                        Panorama manager IP address (required)
+  --username USERNAME   Panorama username (required)
+  --password [PASSWORD]
+                        Panorama password (optional - will prompt if not
+                        provided)
+  --dry-run             Preview mode - no changes made (default: enabled)
+  --commit              Execute changes - overrides dry-run mode
+  --backup-dir BACKUP_DIR
+                        Directory for backup files (default: ./backups)
+  --log-level {DEBUG,INFO,WARNING,ERROR}
+                        Logging level (default: INFO)
+  --log-file LOG_FILE   Path to log file (optional)
+  --json-logging        Use JSON format for file logging
+  --config CONFIG       Path to configuration file (YAML/JSON)
+
+Examples:
+  # Dry-run mode (default - preview only)
+  python3 -m src.duplicate_service_cleanup --panorama-ip 1.2.3.4 --username admin
+
+  # Commit mode (makes actual changes)
+  python3 -m src.duplicate_service_cleanup --panorama-ip 1.2.3.4 --username admin --commit
+
+  # With custom backup directory
+  python3 -m src.duplicate_service_cleanup --panorama-ip 1.2.3.4 --backup-dir /tmp/backups --commit

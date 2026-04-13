@@ -1,0 +1,1 @@
+# QA test scenarios for Duplicate Service Cleanup Tool
