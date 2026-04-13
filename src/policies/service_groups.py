@@ -124,8 +124,8 @@ class ServiceGroupFetcher:
                         group = ServiceGroup(
                             name=sg.name,
                             members=sg.value if isinstance(sg.value, list) else [sg.value] if sg.value else [],
-                            description=sg.description or None,
-                            tag=sg.tag if isinstance(sg.tag, list) else [sg.tag] if sg.tag else []
+                            description=None,
+                            tag=[]
                         )
                         device_group_groups.append(group)
                         
@@ -160,8 +160,8 @@ class ServiceGroupFetcher:
                     group = ServiceGroup(
                         name=sg.name,
                         members=sg.value if isinstance(sg.value, list) else [sg.value] if sg.value else [],
-                        description=sg.description or None,
-                        tag=sg.tag if isinstance(sg.tag, list) else [sg.tag] if sg.tag else []
+                        description=None,
+                        tag=[]
                     )
                     global_groups.append(group)
                     
