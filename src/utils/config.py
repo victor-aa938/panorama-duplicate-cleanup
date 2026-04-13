@@ -25,6 +25,8 @@ class Config:
         log_level: str = "INFO",
         log_file: Optional[str] = None,
         use_json_logging: bool = False,
+        limit_duplicates: Optional[int] = None,
+        policy_types: Optional[str] = None,
     ):
         """
         Initialize configuration.
@@ -49,6 +51,8 @@ class Config:
         self.log_level = log_level
         self.log_file = log_file
         self.use_json_logging = use_json_logging
+        self.limit_duplicates = limit_duplicates
+        self.policy_types = policy_types.split(',') if policy_types else None
 
         # Validate required fields
         self._validate()
@@ -83,6 +87,8 @@ class Config:
             "log_level": self.log_level,
             "log_file": self.log_file,
             "use_json_logging": self.use_json_logging,
+            "limit_duplicates": self.limit_duplicates,
+            "policy_types": self.policy_types,
         }
 
 
@@ -160,6 +166,20 @@ Examples:
         help="Use JSON format for file logging",
     )
 
+    # Incremental commit options
+    parser.add_argument(
+        "--limit-duplicates",
+        type=int,
+        default=None,
+        help="Limit number of duplicate groups to process (for incremental commits)",
+    )
+    parser.add_argument(
+        "--policy-types",
+        type=str,
+        default=None,
+        help="Comma-separated list of policy types to process (e.g., 'security,nat')",
+    )
+
     # Config file option
     parser.add_argument(
         "--config",
@@ -199,18 +219,20 @@ def parse_args(args: Optional[list] = None) -> Config:
         log_level = getattr(logging, parsed.log_level.upper())
 
         # Determine mode
-        dry_run = not parsed.commit  # commit overrides dry_run
+        dry_run = parsed.dry_run
 
         config = Config(
             panorama_ip=parsed.panorama_ip,
             username=parsed.username,
-            password=password,
+            password=password or "",
             dry_run=dry_run,
             commit=parsed.commit,
             backup_dir=parsed.backup_dir,
             log_level=parsed.log_level,
             log_file=parsed.log_file,
             use_json_logging=parsed.json_logging,
+            limit_duplicates=parsed.limit_duplicates,
+            policy_types=parsed.policy_types,
         )
 
         # Initialize logger

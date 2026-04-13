@@ -127,7 +127,13 @@ def main() -> int:
         breaker = TieBreaker()
         winners = {}
         
-        for group in duplicate_groups:
+        # Apply limit filter if specified
+        groups_to_process = duplicate_groups
+        if config.limit_duplicates:
+            groups_to_process = duplicate_groups[:config.limit_duplicates]
+            print(f"  Processing {len(groups_to_process)} of {len(duplicate_groups)} duplicate groups (limited)")
+        
+        for group in groups_to_process:
             service_names = [s.name for s in group.services]
             usage_list = [usage_counts.get(name, 0) for name in service_names]
             winner = breaker.select_winner(service_names, usage_list)
@@ -226,6 +232,66 @@ def main() -> int:
         print("")
         print("Review this report before running in commit mode.")
         print("=" * 60)
+        
+        # === COMMIT MODE EXECUTION ===
+        if not config.dry_run:
+            print("\n" + "=" * 60)
+            print("COMMIT MODE - EXECUTING CHANGES")
+            print("=" * 60)
+            
+            # Filter policies by type if specified
+            policies_to_migrate = policies
+            if config.policy_types:
+                policies_to_migrate = [p for p in policies if p.get('type') in config.policy_types]
+                print(f"\nFiltering policies by types: {', '.join(config.policy_types)}")
+                print(f"  Policies to process: {len(policies_to_migrate)} of {len(policies)}")
+            
+            # Execute migrations with actual connection
+            print("\n--- Executing Policy Migrations ---")
+            migrator_commit = ReferenceMigrator(
+                connection=connection,
+                dry_run=False,
+                duplicate_groups=dup_group_map
+            )
+            
+            commit_policy_result = migrator_commit.migrate_policy_refs(policies=policies_to_migrate)
+            commit_group_result = migrator_commit.migrate_group_refs(groups=service_groups_dicts)
+            
+            print(f"✓ Updated {commit_policy_result.get('policies_updated', 0)} policies")
+            print(f"✓ Updated {commit_group_result.get('groups_updated', 0)} service groups")
+            
+            # Execute deletions
+            print("\n--- Deleting Duplicate Services ---")
+            deleter_commit = ServiceDeleter(
+                connection=connection,
+                dry_run=False
+            )
+            
+            # Only delete duplicates from processed groups
+            dup_services_to_delete = {g.key: list(g.services) for g in groups_to_process}
+            
+            commit_del_result = deleter_commit.delete_duplicates(
+                duplicate_groups=dup_services_to_delete,
+                services_in_use=usage_counts,
+                post_migration_usage=None
+            )
+            
+            print(f"✓ Deleted {commit_del_result.get('services_deleted', 0)} duplicate services")
+            
+            # Final commit summary
+            print("\n" + "=" * 60)
+            print("COMMIT SUMMARY")
+            print("=" * 60)
+            print(f"Duplicate groups processed: {len(groups_to_process)}")
+            if config.limit_duplicates and len(groups_to_process) < len(duplicate_groups):
+                print(f"  (Remaining: {len(duplicate_groups) - len(groups_to_process)})")
+            print(f"Policies updated: {commit_policy_result.get('policies_updated', 0)}")
+            if config.policy_types:
+                print(f"  (Filtered by types: {', '.join(config.policy_types)})")
+            print(f"Service groups updated: {commit_group_result.get('groups_updated', 0)}")
+            print(f"Services deleted: {commit_del_result.get('services_deleted', 0)}")
+            print("=" * 60)
+            print("\n✓ Changes committed successfully!")
         
         connection.disconnect()
         print("\nCleanup analysis complete!")

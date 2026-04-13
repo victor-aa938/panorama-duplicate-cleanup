@@ -284,20 +284,50 @@ class BackupManager:
         with open(filepath, 'w') as f:
             json.dump(report_data, f, indent=2)
         
-        # Save policy backup file
-        policy_backup_path = Path(self.backup_dir) / f"{filename}_policies.txt"
+        # Save detailed backup file
+        policy_backup_path = Path(self.backup_dir) / f"{filename}_changes.txt"
         with open(policy_backup_path, 'w') as f:
-            f.write("POLICIES UNCHANGED (using winners)\n")
+            f.write("=" * 80 + "\n")
+            f.write("DUPLICATE SERVICE CLEANUP - DETAILED CHANGE REPORT\n")
+            f.write("=" * 80 + "\n\n")
+            
+            # Duplicate services to be deleted
+            f.write("DUPLICATE SERVICES TO BE DELETED\n")
+            f.write("-" * 80 + "\n")
+            for group in report_data['duplicate_groups']:
+                winner = group.get('winner')
+                f.write(f"\nGroup: {group['key']}\n")
+                f.write(f"  Winner (KEEP): {winner}\n")
+                f.write(f"  Duplicates (DELETE):\n")
+                for svc in group['services']:
+                    if not svc.get('is_winner'):
+                        f.write(f"    - {svc['name']} (DG: {svc['device_group']})\n")
+            f.write(f"\nTotal duplicate groups: {len(report_data['duplicate_groups'])}\n")
+            f.write(f"Total services to delete: {report_data['summary']['total_services_in_duplicates'] - len(report_data['duplicate_groups'])}\n\n")
+            
+            # Policies using winners (no changes)
+            f.write("POLICIES UNCHANGED (already using winners)\n")
             f.write("-" * 80 + "\n")
             for p in report_data['policies_using_winners']:
-                f.write(f"{p['name']}\n")
+                f.write(f"{p['name']} (DG: {p['device_group']}, Type: {p['type']})\n")
+                f.write(f"  Services: {', '.join(p['services_used'])}\n")
             f.write(f"\nTotal: {len(report_data['policies_using_winners'])}\n\n")
             
-            f.write("POLICIES TO BE CHANGED (using duplicates)\n")
+            # Policies to be modified
+            f.write("POLICIES TO BE MODIFIED (using duplicates - will be updated)\n")
             f.write("-" * 80 + "\n")
             for p in report_data['policies_to_be_modified']:
-                f.write(f"{p['name']}\n")
-            f.write(f"\nTotal: {len(report_data['policies_to_be_modified'])}\n")
+                f.write(f"{p['name']} (DG: {p['device_group']}, Type: {p['type']})\n")
+                f.write(f"  Duplicate services used: {', '.join(p['services_used'])}\n")
+            f.write(f"\nTotal: {len(report_data['policies_to_be_modified'])}\n\n")
+            
+            # Service groups to be modified
+            f.write("SERVICE GROUPS TO BE MODIFIED\n")
+            f.write("-" * 80 + "\n")
+            for sg in report_data['affected_service_groups']:
+                f.write(f"{sg['name']}\n")
+                f.write(f"  Duplicate members: {', '.join(sg['duplicate_members'])}\n")
+            f.write(f"\nTotal: {len(report_data['affected_service_groups'])}\n")
         
         logger.info(f"Duplicate report saved: {filepath}")
         return str(filepath)
