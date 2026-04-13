@@ -99,17 +99,17 @@ def main() -> int:
         from src.services.usage import UsageCounter
         from src.models.service import ServiceGroup
         
-        # Fetch security policies
+        # Fetch security policies (always use live connection)
         print("\nFetching security policies...")
         from src.policies.security import SecurityPolicyFetcher
-        policy_fetcher = SecurityPolicyFetcher(connection if not config.dry_run else None)
+        policy_fetcher = SecurityPolicyFetcher(connection)
         policies = policy_fetcher.fetch_all()
         print(f"Found {len(policies)} security policies")
         
-        # Fetch service groups
+        # Fetch service groups (always use live connection)
         print("\nFetching service groups...")
         from src.policies.service_groups import ServiceGroupFetcher
-        group_fetcher = ServiceGroupFetcher(connection if not config.dry_run else None)
+        group_fetcher = ServiceGroupFetcher(connection)
         service_groups = group_fetcher.fetch_all()
         print(f"Found {len(service_groups)} service groups")
         

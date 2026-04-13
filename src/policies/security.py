@@ -129,22 +129,22 @@ class SecurityPolicyFetcher:
             return self._get_mock_device_groups()
 
         try:
-            # Use the connection to fetch device groups
-            # This simulates the REST API call to /config/panorama/device-groups/entry
-            device_groups_xml = self._connection.op(
-                f'<show><device-group><list><entry name="all"/></list></device-group></show>'
-            )
+            from panos.panorama import DeviceGroup
             
-            # Parse the XML response to extract device group names
+            # Refresh device groups from Panorama
+            DeviceGroup.refreshall(self._connection)
+            
+            # Get all device groups
             device_groups = []
-            for group_elem in device_groups_xml.findall('.//entry'):
-                device_groups.append({
-                    'name': group_elem.get('name', '')
-                })
+            for dg in self._connection.children:
+                if isinstance(dg, DeviceGroup):
+                    device_groups.append({
+                        'name': dg.name
+                    })
 
             return device_groups
 
-        except PanDeviceError as e:
+        except Exception as e:
             raise PanDeviceError(f"Failed to discover device groups: {e}")
 
     def _fetch_pre_rules(self) -> List[Dict]:
@@ -158,19 +158,21 @@ class SecurityPolicyFetcher:
             return self._get_mock_pre_rules()
 
         try:
-            # Fetch pre-rules via REST API
-            # Endpoint: /config/panorama/rules/entry
-            rules_xml = self._connection.op(
-                f'<show><rules><security><list><entry name="all"/></list></security></rules></show>'
-            )
-
+            from panos.policies import PreRulebase, SecurityRule
+            
+            # Get pre-rulebase
+            pre_rulebase = PreRulebase()
+            self._connection.add(pre_rulebase)
+            SecurityRule.refreshall(pre_rulebase)
+            
             policies = []
-            for rule_elem in rules_xml.findall('.//entry'):
-                policies.append(self._parse_rule_element(rule_elem, 'pre-rule'))
+            for rule in pre_rulebase.children:
+                if isinstance(rule, SecurityRule):
+                    policies.append(self._parse_security_rule(rule, 'pre-rule', None))
 
             return policies
 
-        except PanDeviceError as e:
+        except Exception as e:
             raise PanDeviceError(f"Failed to fetch pre-rules: {e}")
 
     def _fetch_device_group_policies(self, group_name: str) -> List[Dict]:
@@ -187,24 +189,55 @@ class SecurityPolicyFetcher:
             return self._get_mock_device_group_policies(group_name)
 
         try:
-            # Fetch device group policies via REST API
-            # Endpoint: /config/panorama/device-groups/{name}/rules/entry
-            rules_xml = self._connection.op(
-                f'<show><rules><security><list><entry name="all"/></list></security></rules></show>',
-                # Note: In real implementation, this would be scoped to the device group
-            )
-
+            from panos.panorama import DeviceGroup
+            from panos.policies import Rulebase, SecurityRule
+            
+            # Find the device group
+            device_group = self._connection.find(group_name, DeviceGroup)
+            if not device_group:
+                return []
+            
+            # Get rulebase for this device group
+            rulebase = Rulebase()
+            device_group.add(rulebase)
+            SecurityRule.refreshall(rulebase)
+            
             policies = []
-            for rule_elem in rules_xml.findall('.//entry'):
-                policy = self._parse_rule_element(rule_elem, 'device-group')
-                policy['device_group'] = group_name
-                policies.append(policy)
+            for rule in rulebase.children:
+                if isinstance(rule, SecurityRule):
+                    policies.append(self._parse_security_rule(rule, 'security', group_name))
 
             return policies
 
-        except PanDeviceError as e:
+        except Exception as e:
             raise PanDeviceError(f"Failed to fetch policies for device group '{group_name}': {e}")
 
+    def _parse_security_rule(self, rule: Any, rule_type: str, device_group: Optional[str]) -> Dict:
+        """
+        Parse a SecurityRule object into a policy dictionary.
+
+        Args:
+            rule: SecurityRule object from PanOS SDK.
+            rule_type: Type of rule ('pre-rule' or 'security').
+            device_group: Device group name (None for pre-rules).
+
+        Returns:
+            Dictionary containing rule/policy information.
+        """
+        return {
+            'name': rule.name,
+            'type': rule_type,
+            'source_zones': rule.fromzone if isinstance(rule.fromzone, list) else [rule.fromzone] if rule.fromzone else [],
+            'destination_zones': rule.tozone if isinstance(rule.tozone, list) else [rule.tozone] if rule.tozone else [],
+            'source_addresses': rule.source if isinstance(rule.source, list) else [rule.source] if rule.source else [],
+            'destination_addresses': rule.destination if isinstance(rule.destination, list) else [rule.destination] if rule.destination else [],
+            'services': rule.service if isinstance(rule.service, list) else [rule.service] if rule.service else [],
+            'action': rule.action,
+            'description': rule.description or '',
+            'device_group': device_group,
+            'disabled': rule.disabled if hasattr(rule, 'disabled') else False,
+        }
+    
     def _parse_rule_element(self, rule_elem, rule_type: str) -> Dict:
         """
         Parse a rule XML element into a policy dictionary.
