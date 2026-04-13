@@ -72,17 +72,19 @@ class ServiceGroupFetcher:
             return []
         
         try:
-            from panos.panorama import Panorama
-            panorama = self.connection.get_panorama()
-            # Fetch device groups using correct API
-            result = panorama.op('<show><device-group><list></list></device-group></show>')
+            from panos.panorama import DeviceGroup
             
-            # Extract device group names from XML
+            # Get the actual Panorama object
+            panorama = self.connection.get_panorama() if hasattr(self.connection, 'get_panorama') else self.connection
+            
+            # Refresh device groups from Panorama
+            DeviceGroup.refreshall(panorama)
+            
+            # Extract device group names
             device_group_names = []
-            for entry in result.findall('.//entry'):
-                name = entry.get('name')
-                if name:
-                    device_group_names.append(name)
+            for dg in panorama.children:
+                if isinstance(dg, DeviceGroup):
+                    device_group_names.append(dg.name)
             
             return device_group_names
         except Exception as e:
@@ -102,31 +104,28 @@ class ServiceGroupFetcher:
         
         for group_name in self.device_groups:
             try:
-                from panos.panorama import Panorama
-                panorama = self.connection.get_panorama()
+                from panos.panorama import DeviceGroup
+                from panos.objects import ServiceGroup as PanOSServiceGroup
                 
-                # Fetch service groups for this device group
-                xpath = f"/config/panorama/device-groups/entry[@name='{group_name}']/service-group/entry"
-                result = panorama.show_config(xpath=xpath)
+                # Get the actual Panorama object
+                panorama = self.connection.get_panorama() if hasattr(self.connection, 'get_panorama') else self.connection
+                
+                # Find the device group
+                device_group = panorama.find(group_name, DeviceGroup)
+                if not device_group:
+                    continue
+                
+                # Refresh service groups for this device group
+                PanOSServiceGroup.refreshall(device_group)
                 
                 # Extract service groups
-                for entry in result.findall('.//entry'):
-                    name = entry.get('name')
-                    if name:
-                        # Extract members
-                        members = [m.text for m in entry.findall('.//members/member')]
-                        # Extract description
-                        desc_elem = entry.find('.//description')
-                        description = desc_elem.text if desc_elem is not None else None
-                        # Extract tags
-                        tag_elements = entry.findall('.//tag/member')
-                        tags = [t.text for t in tag_elements] if tag_elements else []
-                        
+                for sg in device_group.children:
+                    if isinstance(sg, PanOSServiceGroup):
                         group = ServiceGroup(
-                            name=name,
-                            members=members,
-                            description=description,
-                            tag=tags
+                            name=sg.name,
+                            members=sg.value if isinstance(sg.value, list) else [sg.value] if sg.value else [],
+                            description=sg.description or None,
+                            tag=sg.tag if isinstance(sg.tag, list) else [sg.tag] if sg.tag else []
                         )
                         device_group_groups.append(group)
                         
@@ -146,31 +145,23 @@ class ServiceGroupFetcher:
             return []
         
         try:
-            from panos.panorama import Panorama
-            panorama = self.connection.get_panorama()
-            # Fetch global service groups
-            xpath = "/config/panorama/service-group/entry"
-            result = panorama.show_config(xpath=xpath)
+            from panos.objects import ServiceGroup as PanOSServiceGroup
+            
+            # Get the actual Panorama object
+            panorama = self.connection.get_panorama() if hasattr(self.connection, 'get_panorama') else self.connection
+            
+            # Refresh global service groups
+            PanOSServiceGroup.refreshall(panorama)
             
             # Extract service groups
             global_groups = []
-            for entry in result.findall('.//entry'):
-                name = entry.get('name')
-                if name:
-                    # Extract members
-                    members = [m.text for m in entry.findall('.//members/member')]
-                    # Extract description
-                    desc_elem = entry.find('.//description')
-                    description = desc_elem.text if desc_elem is not None else None
-                    # Extract tags
-                    tag_elements = entry.findall('.//tag/member')
-                    tags = [t.text for t in tag_elements] if tag_elements else []
-                    
+            for sg in panorama.children:
+                if isinstance(sg, PanOSServiceGroup):
                     group = ServiceGroup(
-                        name=name,
-                        members=members,
-                        description=description,
-                        tag=tags
+                        name=sg.name,
+                        members=sg.value if isinstance(sg.value, list) else [sg.value] if sg.value else [],
+                        description=sg.description or None,
+                        tag=sg.tag if isinstance(sg.tag, list) else [sg.tag] if sg.tag else []
                     )
                     global_groups.append(group)
                     
