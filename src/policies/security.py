@@ -2,21 +2,24 @@
 
 from typing import List, Dict, Optional, Any
 from xml.etree.ElementTree import Element
-from panos.firewall import PanDevice
 from panos.errors import PanDeviceError
 
 class SecurityPolicyFetcher:
     """Fetch and manage security policies from Panorama device groups and pre-rules."""
 
-    def __init__(self, connection: Optional[PanDevice] = None):
+    def __init__(self, connection: Optional[Any] = None):
         """
         Initialize the SecurityPolicyFetcher.
 
         Args:
-            connection: Optional PanDevice connection object. If not provided,
+            connection: Optional PanOSConnection wrapper object. If not provided,
                        dry-run mode with mock data will be used.
         """
-        self._connection = connection
+        self._connection_wrapper = connection
+        self._connection = None
+        if connection is not None:
+            # Extract the actual Panorama object from the wrapper
+            self._connection = connection.get_panorama() if hasattr(connection, 'get_panorama') else connection
         self._cache: Optional[List[Dict]] = None
         self._is_dry_run = connection is None
 
