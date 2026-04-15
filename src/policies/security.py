@@ -235,6 +235,9 @@ class SecurityPolicyFetcher:
         Returns:
             Dictionary containing rule/policy information.
         """
+        # Determine location: 'shared' for pre-rules, device group name otherwise
+        location = 'shared' if device_group is None else device_group
+        
         return {
             'name': rule.name,
             'type': rule_type,
@@ -246,6 +249,7 @@ class SecurityPolicyFetcher:
             'action': rule.action,
             'description': rule.description or '',
             'device_group': device_group,
+            'location': location,
             'disabled': rule.disabled if hasattr(rule, 'disabled') else False,
         }
         """

@@ -117,6 +117,32 @@ def main() -> int:
         policies = security_policies + nat_policies
         print(f"Total policies: {len(policies)}")
         
+        # Print all policies being considered for duplicate service detection
+        print("\n--- All Policies Considered for Duplicate Service Detection ---")
+        print(f"{'Policy Name':<50} {'Type':<20} {'Location':<30} {'Services'}")
+        print("-" * 150)
+        for policy in policies:
+            policy_name = policy.get('name', 'Unknown')[:48]
+            policy_type = policy.get('type', 'unknown')[:18]
+            location = policy.get('location', policy.get('device_group', 'N/A'))[:28]
+            
+            # Get services - handle both list and single service (for NAT)
+            services = policy.get('services', [])
+            if not isinstance(services, list):
+                services = [services] if services else []
+            
+            # For NAT policies, also check 'service' field
+            if not services and 'service' in policy:
+                services = [policy['service']]
+            
+            services_str = ', '.join(services) if services else 'any'
+            if len(services_str) > 50:
+                services_str = services_str[:47] + '...'
+            
+            print(f"{policy_name:<50} {policy_type:<20} {location:<30} {services_str}")
+        print(f"\nTotal policies with services: {sum(1 for p in policies if p.get('services') or p.get('service'))}")
+        print("-" * 150)
+        
         # Fetch service groups (always use live connection)
         print("\nFetching service groups...")
         from src.policies.service_groups import ServiceGroupFetcher
