@@ -46,23 +46,26 @@ class NatPolicyFetcher:
         try:
             self.logger.info("Fetching real NAT policies from Panorama...")
             
-            # Fetch NAT pre-rules (Panorama-level, shared)
-            pre_rules = self._fetch_pre_rules()
-            self.logger.info(f"Fetched {len(pre_rules)} NAT pre-rules (shared/Panorama-level)")
-            policies.extend(pre_rules)
-
-            # Fetch NAT post-rules (Panorama-level, shared)
-            post_rules = self._fetch_post_rules()
-            self.logger.info(f"Fetched {len(post_rules)} NAT post-rules (shared/Panorama-level)")
-            policies.extend(post_rules)
-
-            # Fetch device groups and their NAT policies
+            # Fetch device groups first
             device_groups = self._discover_device_groups()
             self.logger.info(f"Found {len(device_groups)} device groups")
+            
+            # For each device group, fetch pre-rules, policies, and post-rules
             for group in device_groups:
+                # Fetch NAT pre-rules for this device group
+                group_pre_rules = self._fetch_device_group_pre_rules(group['name'])
+                self.logger.info(f"Fetched {len(group_pre_rules)} NAT pre-rules from device group '{group['name']}'")
+                policies.extend(group_pre_rules)
+                
+                # Fetch regular NAT policies for this device group
                 group_policies = self._fetch_device_group_policies(group['name'])
                 self.logger.info(f"Fetched {len(group_policies)} NAT policies from device group '{group['name']}'")
                 policies.extend(group_policies)
+                
+                # Fetch NAT post-rules for this device group
+                group_post_rules = self._fetch_device_group_post_rules(group['name'])
+                self.logger.info(f"Fetched {len(group_post_rules)} NAT post-rules from device group '{group['name']}'")
+                policies.extend(group_post_rules)
 
         except Exception as e:
             self.logger.error(f"Error fetching NAT policies: {e}", exc_info=True)
@@ -126,61 +129,81 @@ class NatPolicyFetcher:
             self.logger.error(f"Error discovering device groups: {e}", exc_info=True)
             raise PanDeviceError(f"Failed to discover device groups: {e}")
 
-    def _fetch_pre_rules(self) -> List[Dict]:
+    def _fetch_device_group_pre_rules(self, group_name: str) -> List[Dict]:
         """
-        Fetch NAT pre-rules from Panorama.
+        Fetch NAT pre-rules from a specific device group.
+
+        Args:
+            group_name: Name of the device group.
 
         Returns:
-            List of NAT pre-rule policy dictionaries.
+            List of NAT pre-rule policy dictionaries for the device group.
         """
         try:
+            from panos.panorama import DeviceGroup
             from panos.policies import PreRulebase, NatRule
             
-            self.logger.info("Fetching NAT pre-rules from Panorama...")
-            # Get pre-rulebase
+            self.logger.info(f"Fetching NAT pre-rules for device group '{group_name}'...")
+            # Find the device group
+            device_group = self._connection.find(group_name, DeviceGroup)
+            if not device_group:
+                self.logger.warning(f"Device group '{group_name}' not found")
+                return []
+            
+            # Get pre-rulebase for this device group
             pre_rulebase = PreRulebase()
-            self._connection.add(pre_rulebase)
+            device_group.add(pre_rulebase)
             NatRule.refreshall(pre_rulebase)
             
             policies = []
             for rule in pre_rulebase.children:
                 if isinstance(rule, NatRule):
-                    policies.append(self._parse_nat_rule(rule, 'nat-pre-rule', None))
-                    self.logger.debug(f"Found NAT pre-rule: {rule.name}")
+                    policies.append(self._parse_nat_rule(rule, 'nat-pre-rule', group_name))
+                    self.logger.debug(f"Found NAT pre-rule: {rule.name} in device group '{group_name}'")
 
             return policies
 
         except Exception as e:
-            self.logger.error(f"Error fetching NAT pre-rules: {e}", exc_info=True)
-            raise PanDeviceError(f"Failed to fetch NAT pre-rules: {e}")
+            self.logger.error(f"Error fetching NAT pre-rules for device group '{group_name}': {e}", exc_info=True)
+            raise PanDeviceError(f"Failed to fetch NAT pre-rules for device group '{group_name}': {e}")
 
-    def _fetch_post_rules(self) -> List[Dict]:
+    def _fetch_device_group_post_rules(self, group_name: str) -> List[Dict]:
         """
-        Fetch NAT post-rules from Panorama.
+        Fetch NAT post-rules from a specific device group.
+
+        Args:
+            group_name: Name of the device group.
 
         Returns:
-            List of NAT post-rule policy dictionaries.
+            List of NAT post-rule policy dictionaries for the device group.
         """
         try:
+            from panos.panorama import DeviceGroup
             from panos.policies import PostRulebase, NatRule
             
-            self.logger.info("Fetching NAT post-rules from Panorama...")
-            # Get post-rulebase
+            self.logger.info(f"Fetching NAT post-rules for device group '{group_name}'...")
+            # Find the device group
+            device_group = self._connection.find(group_name, DeviceGroup)
+            if not device_group:
+                self.logger.warning(f"Device group '{group_name}' not found")
+                return []
+            
+            # Get post-rulebase for this device group
             post_rulebase = PostRulebase()
-            self._connection.add(post_rulebase)
+            device_group.add(post_rulebase)
             NatRule.refreshall(post_rulebase)
             
             policies = []
             for rule in post_rulebase.children:
                 if isinstance(rule, NatRule):
-                    policies.append(self._parse_nat_rule(rule, 'nat-post-rule', None))
-                    self.logger.debug(f"Found NAT post-rule: {rule.name}")
+                    policies.append(self._parse_nat_rule(rule, 'nat-post-rule', group_name))
+                    self.logger.debug(f"Found NAT post-rule: {rule.name} in device group '{group_name}'")
 
             return policies
 
         except Exception as e:
-            self.logger.error(f"Error fetching NAT post-rules: {e}", exc_info=True)
-            raise PanDeviceError(f"Failed to fetch NAT post-rules: {e}")
+            self.logger.error(f"Error fetching NAT post-rules for device group '{group_name}': {e}", exc_info=True)
+            raise PanDeviceError(f"Failed to fetch NAT post-rules for device group '{group_name}': {e}")
 
     def _fetch_device_group_policies(self, group_name: str) -> List[Dict]:
         """
@@ -232,8 +255,8 @@ class NatPolicyFetcher:
         Returns:
             Dictionary containing NAT rule/policy information.
         """
-        # Determine location: 'shared' for pre-rules, device group name otherwise
-        location = 'shared' if device_group is None else device_group
+        # Location is always the device group name (pre-rules and post-rules are per-DG)
+        location = device_group if device_group else 'shared'
         
         return {
             'name': rule.name,

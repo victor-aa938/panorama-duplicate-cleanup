@@ -47,23 +47,26 @@ class SecurityPolicyFetcher:
         try:
             self.logger.info("Fetching real policies from Panorama...")
             
-            # Fetch pre-rules (Panorama-level, shared)
-            pre_rules = self._fetch_pre_rules()
-            self.logger.info(f"Fetched {len(pre_rules)} pre-rules (shared/Panorama-level)")
-            policies.extend(pre_rules)
-
-            # Fetch post-rules (Panorama-level, shared)
-            post_rules = self._fetch_post_rules()
-            self.logger.info(f"Fetched {len(post_rules)} post-rules (shared/Panorama-level)")
-            policies.extend(post_rules)
-
-            # Fetch device groups and their policies
+            # Fetch device groups first
             device_groups = self._discover_device_groups()
             self.logger.info(f"Found {len(device_groups)} device groups")
+            
+            # For each device group, fetch pre-rules, policies, and post-rules
             for group in device_groups:
+                # Fetch pre-rules for this device group
+                group_pre_rules = self._fetch_device_group_pre_rules(group['name'])
+                self.logger.info(f"Fetched {len(group_pre_rules)} pre-rules from device group '{group['name']}'")
+                policies.extend(group_pre_rules)
+                
+                # Fetch regular policies for this device group
                 group_policies = self._fetch_device_group_policies(group['name'])
                 self.logger.info(f"Fetched {len(group_policies)} policies from device group '{group['name']}'")
                 policies.extend(group_policies)
+                
+                # Fetch post-rules for this device group
+                group_post_rules = self._fetch_device_group_post_rules(group['name'])
+                self.logger.info(f"Fetched {len(group_post_rules)} post-rules from device group '{group['name']}'")
+                policies.extend(group_post_rules)
 
         except Exception as e:
             self.logger.error(f"Error fetching policies: {e}", exc_info=True)
@@ -163,61 +166,81 @@ class SecurityPolicyFetcher:
             self.logger.error(f"Error discovering device groups: {e}", exc_info=True)
             raise PanDeviceError(f"Failed to discover device groups: {e}")
 
-    def _fetch_pre_rules(self) -> List[Dict]:
+    def _fetch_device_group_pre_rules(self, group_name: str) -> List[Dict]:
         """
-        Fetch pre-rules from Panorama.
+        Fetch pre-rules from a specific device group.
+
+        Args:
+            group_name: Name of the device group.
 
         Returns:
-            List of pre-rule policy dictionaries.
+            List of pre-rule policy dictionaries for the device group.
         """
         try:
+            from panos.panorama import DeviceGroup
             from panos.policies import PreRulebase, SecurityRule
             
-            self.logger.info("Fetching pre-rules from Panorama...")
-            # Get pre-rulebase
+            self.logger.info(f"Fetching pre-rules for device group '{group_name}'...")
+            # Find the device group
+            device_group = self._connection.find(group_name, DeviceGroup)
+            if not device_group:
+                self.logger.warning(f"Device group '{group_name}' not found")
+                return []
+            
+            # Get pre-rulebase for this device group
             pre_rulebase = PreRulebase()
-            self._connection.add(pre_rulebase)
+            device_group.add(pre_rulebase)
             SecurityRule.refreshall(pre_rulebase)
             
             policies = []
             for rule in pre_rulebase.children:
                 if isinstance(rule, SecurityRule):
-                    policies.append(self._parse_security_rule(rule, 'pre-rule', None))
-                    self.logger.debug(f"Found pre-rule: {rule.name}")
+                    policies.append(self._parse_security_rule(rule, 'pre-rule', group_name))
+                    self.logger.debug(f"Found pre-rule: {rule.name} in device group '{group_name}'")
 
             return policies
 
         except Exception as e:
-            self.logger.error(f"Error fetching pre-rules: {e}", exc_info=True)
-            raise PanDeviceError(f"Failed to fetch pre-rules: {e}")
+            self.logger.error(f"Error fetching pre-rules for device group '{group_name}': {e}", exc_info=True)
+            raise PanDeviceError(f"Failed to fetch pre-rules for device group '{group_name}': {e}")
 
-    def _fetch_post_rules(self) -> List[Dict]:
+    def _fetch_device_group_post_rules(self, group_name: str) -> List[Dict]:
         """
-        Fetch post-rules from Panorama.
+        Fetch post-rules from a specific device group.
+
+        Args:
+            group_name: Name of the device group.
 
         Returns:
-            List of post-rule policy dictionaries.
+            List of post-rule policy dictionaries for the device group.
         """
         try:
+            from panos.panorama import DeviceGroup
             from panos.policies import PostRulebase, SecurityRule
             
-            self.logger.info("Fetching post-rules from Panorama...")
-            # Get post-rulebase
+            self.logger.info(f"Fetching post-rules for device group '{group_name}'...")
+            # Find the device group
+            device_group = self._connection.find(group_name, DeviceGroup)
+            if not device_group:
+                self.logger.warning(f"Device group '{group_name}' not found")
+                return []
+            
+            # Get post-rulebase for this device group
             post_rulebase = PostRulebase()
-            self._connection.add(post_rulebase)
+            device_group.add(post_rulebase)
             SecurityRule.refreshall(post_rulebase)
             
             policies = []
             for rule in post_rulebase.children:
                 if isinstance(rule, SecurityRule):
-                    policies.append(self._parse_security_rule(rule, 'post-rule', None))
-                    self.logger.debug(f"Found post-rule: {rule.name}")
+                    policies.append(self._parse_security_rule(rule, 'post-rule', group_name))
+                    self.logger.debug(f"Found post-rule: {rule.name} in device group '{group_name}'")
 
             return policies
 
         except Exception as e:
-            self.logger.error(f"Error fetching post-rules: {e}", exc_info=True)
-            raise PanDeviceError(f"Failed to fetch post-rules: {e}")
+            self.logger.error(f"Error fetching post-rules for device group '{group_name}': {e}", exc_info=True)
+            raise PanDeviceError(f"Failed to fetch post-rules for device group '{group_name}': {e}")
 
     def _fetch_device_group_policies(self, group_name: str) -> List[Dict]:
         """
@@ -269,8 +292,8 @@ class SecurityPolicyFetcher:
         Returns:
             Dictionary containing rule/policy information.
         """
-        # Determine location: 'shared' for pre-rules, device group name otherwise
-        location = 'shared' if device_group is None else device_group
+        # Location is always the device group name (pre-rules and post-rules are per-DG)
+        location = device_group if device_group else 'shared'
         
         return {
             'name': rule.name,
