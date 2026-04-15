@@ -15,13 +15,19 @@ class SecurityPolicyFetcher:
             connection: Optional PanOSConnection wrapper object. If not provided,
                        dry-run mode with mock data will be used.
         """
+        import logging
+        self.logger = logging.getLogger(__name__)
+        
         self._connection_wrapper = connection
         self._connection = None
         if connection is not None:
             # Extract the actual Panorama object from the wrapper
             self._connection = connection.get_panorama() if hasattr(connection, 'get_panorama') else connection
+            self.logger.info(f"SecurityPolicyFetcher initialized with connection: {type(self._connection)}")
         self._cache: Optional[List[Dict]] = None
-        self._is_dry_run = connection is None
+        # Only use dry-run if we don't have a valid Panorama connection
+        self._is_dry_run = self._connection is None
+        self.logger.info(f"Dry-run mode: {self._is_dry_run}")
 
     def fetch_all(self) -> List[Dict]:
         """
@@ -40,20 +46,26 @@ class SecurityPolicyFetcher:
         policies: List[Dict] = []
 
         if self._is_dry_run:
+            self.logger.warning("Using mock policies - no connection available")
             policies = self._get_mock_policies()
         else:
             try:
+                self.logger.info("Fetching real policies from Panorama...")
                 # Fetch pre-rules
                 pre_rules = self._fetch_pre_rules()
+                self.logger.info(f"Fetched {len(pre_rules)} pre-rules")
                 policies.extend(pre_rules)
 
                 # Fetch device groups and their policies
                 device_groups = self._discover_device_groups()
+                self.logger.info(f"Found {len(device_groups)} device groups")
                 for group in device_groups:
                     group_policies = self._fetch_device_group_policies(group['name'])
+                    self.logger.info(f"Fetched {len(group_policies)} policies from device group '{group['name']}'")
                     policies.extend(group_policies)
 
-            except PanDeviceError as e:
+            except Exception as e:
+                self.logger.error(f"Error fetching policies: {e}", exc_info=True)
                 raise PanDeviceError(f"Failed to fetch security policies: {e}")
 
         self._cache = policies
@@ -129,11 +141,13 @@ class SecurityPolicyFetcher:
             List of device group dictionaries.
         """
         if self._is_dry_run:
+            self.logger.warning("Using mock device groups")
             return self._get_mock_device_groups()
 
         try:
             from panos.panorama import DeviceGroup
             
+            self.logger.info("Discovering device groups from Panorama...")
             # Refresh device groups from Panorama
             DeviceGroup.refreshall(self._connection)
             
@@ -144,10 +158,12 @@ class SecurityPolicyFetcher:
                     device_groups.append({
                         'name': dg.name
                     })
+                    self.logger.debug(f"Found device group: {dg.name}")
 
             return device_groups
 
         except Exception as e:
+            self.logger.error(f"Error discovering device groups: {e}", exc_info=True)
             raise PanDeviceError(f"Failed to discover device groups: {e}")
 
     def _fetch_pre_rules(self) -> List[Dict]:
@@ -158,11 +174,13 @@ class SecurityPolicyFetcher:
             List of pre-rule policy dictionaries.
         """
         if self._is_dry_run:
+            self.logger.warning("Using mock pre-rules")
             return self._get_mock_pre_rules()
 
         try:
             from panos.policies import PreRulebase, SecurityRule
             
+            self.logger.info("Fetching pre-rules from Panorama...")
             # Get pre-rulebase
             pre_rulebase = PreRulebase()
             self._connection.add(pre_rulebase)
@@ -172,10 +190,12 @@ class SecurityPolicyFetcher:
             for rule in pre_rulebase.children:
                 if isinstance(rule, SecurityRule):
                     policies.append(self._parse_security_rule(rule, 'pre-rule', None))
+                    self.logger.debug(f"Found pre-rule: {rule.name}")
 
             return policies
 
         except Exception as e:
+            self.logger.error(f"Error fetching pre-rules: {e}", exc_info=True)
             raise PanDeviceError(f"Failed to fetch pre-rules: {e}")
 
     def _fetch_device_group_policies(self, group_name: str) -> List[Dict]:
@@ -189,15 +209,18 @@ class SecurityPolicyFetcher:
             List of policy dictionaries for the device group.
         """
         if self._is_dry_run:
+            self.logger.warning(f"Using mock policies for device group '{group_name}'")
             return self._get_mock_device_group_policies(group_name)
 
         try:
             from panos.panorama import DeviceGroup
             from panos.policies import Rulebase, SecurityRule
             
+            self.logger.info(f"Fetching policies for device group '{group_name}'...")
             # Find the device group
             device_group = self._connection.find(group_name, DeviceGroup)
             if not device_group:
+                self.logger.warning(f"Device group '{group_name}' not found")
                 return []
             
             # Get rulebase for this device group
@@ -209,10 +232,12 @@ class SecurityPolicyFetcher:
             for rule in rulebase.children:
                 if isinstance(rule, SecurityRule):
                     policies.append(self._parse_security_rule(rule, 'security', group_name))
+                    self.logger.debug(f"Found policy: {rule.name} in device group '{group_name}'")
 
             return policies
 
         except Exception as e:
+            self.logger.error(f"Error fetching policies for device group '{group_name}': {e}", exc_info=True)
             raise PanDeviceError(f"Failed to fetch policies for device group '{group_name}': {e}")
 
     def _parse_security_rule(self, rule: Any, rule_type: str, device_group: Optional[str]) -> Dict:
