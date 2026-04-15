@@ -138,6 +138,12 @@ def main() -> int:
             usage_list = [usage_counts.get(name, 0) for name in service_names]
             winner = breaker.select_winner(service_names, usage_list)
             winners[group.key] = winner
+            # losers = [s for s in group.services if s.name != winner]
+            # print(f"  Group '{group.key}':")
+            # print(f"    Winner: {winner}")
+            # print(f"    Duplicates to update/delete:")
+            # for loser in losers:
+            #     print(f"      - {loser.name} ({loser.device_group})")
         
         print(f"  Selected winners for {len(winners)} duplicate groups")
         
@@ -166,14 +172,11 @@ def main() -> int:
         
         print(f"  Policies with updated references: {policy_result.get('policies_updated', 0)}")
         print(f"  Service groups with updated members: {group_result.get('groups_updated', 0)}")
-        # Log policy details for pre-rules and which services they need to update
-        if policy_result.get('policy_details'):
-            print("\nPolicy migration details:")
-            for detail in policy_result['policy_details']:
-                if detail['changed_services']:
-                    print(f"  Policy '{detail['name']}' (type: {detail['type']}, DG: {detail.get('device_group') or 'N/A'}):")
-                    for old_svc, new_svc in detail['changed_services'].items():
-                        print(f"    - {old_svc} -> {new_svc}")
+        
+        # Save detailed policies-to-update report
+        if policy_result.get('policies_updated', 0) > 0:
+            policies_report_path = backup_manager.save_policies_to_update_report(policy_result)
+            print(f"✓ Policies to update report saved: {policies_report_path}")
         
         # Step 4: Delete duplicates (dry-run)
         print("\n--- Step 4: Deleting Duplicate Services ---")

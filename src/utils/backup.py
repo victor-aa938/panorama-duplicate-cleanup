@@ -331,6 +331,69 @@ class BackupManager:
         
         logger.info(f"Duplicate report saved: {filepath}")
         return str(filepath)
+    
+    def save_policies_to_update_report(self, policy_migration_result: Dict[str, Any]) -> str:
+        """
+        Save a detailed report of all policies that will be updated in commit mode.
+        
+        Args:
+            policy_migration_result: Result from ReferenceMigrator.migrate_policy_refs()
+        
+        Returns:
+            Path to the saved report file
+        """
+        filename = self._generate_filename("policies_to_update")
+        filepath = Path(self.backup_dir) / f"{filename}.txt"
+        
+        policy_details = policy_migration_result.get('policy_details', [])
+        policies_to_update = [p for p in policy_details if p.get('changed_services')]
+        
+        with open(filepath, 'w') as f:
+            f.write("=" * 80 + "\n")
+            f.write("SECURITY POLICIES TO BE UPDATED IN COMMIT MODE\n")
+            f.write("=" * 80 + "\n\n")
+            f.write(f"Total policies to update: {len(policies_to_update)}\n")
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            
+            # Group by device group
+            by_device_group = {}
+            for policy in policies_to_update:
+                dg = policy.get('device_group') or 'Pre-Rules'
+                if dg not in by_device_group:
+                    by_device_group[dg] = []
+                by_device_group[dg].append(policy)
+            
+            # Write policies grouped by device group
+            for dg in sorted(by_device_group.keys()):
+                policies = by_device_group[dg]
+                f.write("=" * 80 + "\n")
+                f.write(f"DEVICE GROUP: {dg}\n")
+                f.write("=" * 80 + "\n")
+                f.write(f"Policies to update: {len(policies)}\n\n")
+                
+                for i, policy in enumerate(policies, 1):
+                    f.write(f"{i}. Policy: {policy['name']}\n")
+                    f.write(f"   Type: {policy.get('type', 'security')}\n")
+                    if policy.get('description'):
+                        f.write(f"   Description: {policy['description']}\n")
+                    f.write(f"   Service changes:\n")
+                    for old_svc, new_svc in policy['changed_services'].items():
+                        f.write(f"     - {old_svc} → {new_svc}\n")
+                    f.write("\n")
+            
+            # Summary by type
+            f.write("=" * 80 + "\n")
+            f.write("SUMMARY BY POLICY TYPE\n")
+            f.write("=" * 80 + "\n")
+            by_type = {}
+            for policy in policies_to_update:
+                ptype = policy.get('type', 'security')
+                by_type[ptype] = by_type.get(ptype, 0) + 1
+            for ptype, count in sorted(by_type.items()):
+                f.write(f"{ptype}: {count} policies\n")
+        
+        logger.info(f"Policies to update report saved: {filepath}")
+        return str(filepath)
 
 
 def create_backup(data: str, backup_dir: str = "./backups", prefix: str = "backup") -> str:
