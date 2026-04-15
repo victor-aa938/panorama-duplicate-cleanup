@@ -45,10 +45,16 @@ class NatPolicyFetcher:
 
         try:
             self.logger.info("Fetching real NAT policies from Panorama...")
-            # Fetch NAT pre-rules
+            
+            # Fetch NAT pre-rules (Panorama-level, shared)
             pre_rules = self._fetch_pre_rules()
-            self.logger.info(f"Fetched {len(pre_rules)} NAT pre-rules")
+            self.logger.info(f"Fetched {len(pre_rules)} NAT pre-rules (shared/Panorama-level)")
             policies.extend(pre_rules)
+
+            # Fetch NAT post-rules (Panorama-level, shared)
+            post_rules = self._fetch_post_rules()
+            self.logger.info(f"Fetched {len(post_rules)} NAT post-rules (shared/Panorama-level)")
+            policies.extend(post_rules)
 
             # Fetch device groups and their NAT policies
             device_groups = self._discover_device_groups()
@@ -147,6 +153,34 @@ class NatPolicyFetcher:
         except Exception as e:
             self.logger.error(f"Error fetching NAT pre-rules: {e}", exc_info=True)
             raise PanDeviceError(f"Failed to fetch NAT pre-rules: {e}")
+
+    def _fetch_post_rules(self) -> List[Dict]:
+        """
+        Fetch NAT post-rules from Panorama.
+
+        Returns:
+            List of NAT post-rule policy dictionaries.
+        """
+        try:
+            from panos.policies import PostRulebase, NatRule
+            
+            self.logger.info("Fetching NAT post-rules from Panorama...")
+            # Get post-rulebase
+            post_rulebase = PostRulebase()
+            self._connection.add(post_rulebase)
+            NatRule.refreshall(post_rulebase)
+            
+            policies = []
+            for rule in post_rulebase.children:
+                if isinstance(rule, NatRule):
+                    policies.append(self._parse_nat_rule(rule, 'nat-post-rule', None))
+                    self.logger.debug(f"Found NAT post-rule: {rule.name}")
+
+            return policies
+
+        except Exception as e:
+            self.logger.error(f"Error fetching NAT post-rules: {e}", exc_info=True)
+            raise PanDeviceError(f"Failed to fetch NAT post-rules: {e}")
 
     def _fetch_device_group_policies(self, group_name: str) -> List[Dict]:
         """
