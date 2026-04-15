@@ -138,12 +138,8 @@ def main() -> int:
             usage_list = [usage_counts.get(name, 0) for name in service_names]
             winner = breaker.select_winner(service_names, usage_list)
             winners[group.key] = winner
-            losers = [s for s in group.services if s.name != winner]
-            print(f"  Group '{group.key}':")
-            print(f"    Winner: {winner}")
-            print(f"    Duplicates to update/delete:")
-            for loser in losers:
-                print(f"      - {loser.name} ({loser.device_group})")
+        
+        print(f"  Selected winners for {len(winners)} duplicate groups")
         
         # === CREATE BACKUP REPORT ===
         print("\n--- Creating Backup Report ---")
