@@ -103,8 +103,19 @@ def main() -> int:
         print("\nFetching security policies...")
         from src.policies.security import SecurityPolicyFetcher
         policy_fetcher = SecurityPolicyFetcher(connection)
-        policies = policy_fetcher.fetch_all()
-        print(f"Found {len(policies)} security policies")
+        security_policies = policy_fetcher.fetch_all()
+        print(f"Found {len(security_policies)} security policies")
+        
+        # Fetch NAT policies (always use live connection)
+        print("\nFetching NAT policies...")
+        from src.policies.nat import NatPolicyFetcher
+        nat_fetcher = NatPolicyFetcher(connection)
+        nat_policies = nat_fetcher.fetch_all()
+        print(f"Found {len(nat_policies)} NAT policies")
+        
+        # Combine all policies for migration
+        policies = security_policies + nat_policies
+        print(f"Total policies: {len(policies)}")
         
         # Fetch service groups (always use live connection)
         print("\nFetching service groups...")
@@ -116,10 +127,10 @@ def main() -> int:
         # Convert ServiceGroup objects to dicts for migration
         service_groups_dicts = [sg.to_dict() for sg in service_groups]
         
-        # Count usage
+        # Count usage (security policies + NAT policies)
         usage_counter = UsageCounter(policies, service_groups)
         usage_counts = usage_counter.count_all()
-        print(f"Counted usage for {len(usage_counts)} services")
+        print(f"Counted usage for {len(usage_counts)} services across security and NAT policies")
         
         # Step 2: Select winners for each duplicate group
         print("\n--- Step 2: Selecting Winner Services ---")

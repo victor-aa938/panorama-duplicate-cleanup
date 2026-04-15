@@ -350,7 +350,8 @@ class BackupManager:
         
         with open(filepath, 'w') as f:
             f.write("=" * 80 + "\n")
-            f.write("SECURITY POLICIES TO BE UPDATED IN COMMIT MODE\n")
+            f.write("POLICIES TO BE UPDATED IN COMMIT MODE\n")
+            f.write("(Security Pre-Rules, Security Policies, NAT Pre-Rules, NAT Policies)\n")
             f.write("=" * 80 + "\n\n")
             f.write(f"Total policies to update: {len(policies_to_update)}\n")
             f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
