@@ -19,14 +19,13 @@ class NatPolicyFetcher:
         
         self._connection_wrapper = connection
         self._connection = None
-        if connection is not None:
-            # Extract the actual Panorama object from the wrapper
-            self._connection = connection.get_panorama() if hasattr(connection, 'get_panorama') else connection
-            self.logger.info(f"NatPolicyFetcher initialized with connection: {type(self._connection)}")
+        if connection is None:
+            raise ValueError("Connection is required for NatPolicyFetcher. Cannot use mock data.")
+        
+        # Extract the actual Panorama object from the wrapper
+        self._connection = connection.get_panorama() if hasattr(connection, 'get_panorama') else connection
+        self.logger.info(f"NatPolicyFetcher initialized with connection: {type(self._connection)}")
         self._cache: Optional[List[Dict]] = None
-        # Only use dry-run if we don't have a valid Panorama connection
-        self._is_dry_run = self._connection is None
-        self.logger.info(f"Dry-run mode: {self._is_dry_run}")
 
     def fetch_all(self) -> List[Dict]:
         """
@@ -44,28 +43,24 @@ class NatPolicyFetcher:
 
         policies: List[Dict] = []
 
-        if self._is_dry_run:
-            self.logger.warning("Using mock NAT policies - no connection available")
-            policies = self._get_mock_policies()
-        else:
-            try:
-                self.logger.info("Fetching real NAT policies from Panorama...")
-                # Fetch NAT pre-rules
-                pre_rules = self._fetch_pre_rules()
-                self.logger.info(f"Fetched {len(pre_rules)} NAT pre-rules")
-                policies.extend(pre_rules)
+        try:
+            self.logger.info("Fetching real NAT policies from Panorama...")
+            # Fetch NAT pre-rules
+            pre_rules = self._fetch_pre_rules()
+            self.logger.info(f"Fetched {len(pre_rules)} NAT pre-rules")
+            policies.extend(pre_rules)
 
-                # Fetch device groups and their NAT policies
-                device_groups = self._discover_device_groups()
-                self.logger.info(f"Found {len(device_groups)} device groups")
-                for group in device_groups:
-                    group_policies = self._fetch_device_group_policies(group['name'])
-                    self.logger.info(f"Fetched {len(group_policies)} NAT policies from device group '{group['name']}'")
-                    policies.extend(group_policies)
+            # Fetch device groups and their NAT policies
+            device_groups = self._discover_device_groups()
+            self.logger.info(f"Found {len(device_groups)} device groups")
+            for group in device_groups:
+                group_policies = self._fetch_device_group_policies(group['name'])
+                self.logger.info(f"Fetched {len(group_policies)} NAT policies from device group '{group['name']}'")
+                policies.extend(group_policies)
 
-            except Exception as e:
-                self.logger.error(f"Error fetching NAT policies: {e}", exc_info=True)
-                raise PanDeviceError(f"Failed to fetch NAT policies: {e}")
+        except Exception as e:
+            self.logger.error(f"Error fetching NAT policies: {e}", exc_info=True)
+            raise PanDeviceError(f"Failed to fetch NAT policies: {e}")
 
         self._cache = policies
         return policies
@@ -103,10 +98,6 @@ class NatPolicyFetcher:
         Returns:
             List of device group dictionaries.
         """
-        if self._is_dry_run:
-            self.logger.warning("Using mock device groups")
-            return self._get_mock_device_groups()
-
         try:
             from panos.panorama import DeviceGroup
             
@@ -136,10 +127,6 @@ class NatPolicyFetcher:
         Returns:
             List of NAT pre-rule policy dictionaries.
         """
-        if self._is_dry_run:
-            self.logger.warning("Using mock NAT pre-rules")
-            return self._get_mock_pre_rules()
-
         try:
             from panos.policies import PreRulebase, NatRule
             
@@ -171,10 +158,6 @@ class NatPolicyFetcher:
         Returns:
             List of NAT policy dictionaries for the device group.
         """
-        if self._is_dry_run:
-            self.logger.warning(f"Using mock NAT policies for device group '{group_name}'")
-            return self._get_mock_device_group_policies(group_name)
-
         try:
             from panos.panorama import DeviceGroup
             from panos.policies import Rulebase, NatRule
@@ -228,74 +211,3 @@ class NatPolicyFetcher:
             'disabled': rule.disabled if hasattr(rule, 'disabled') else False,
             'nat_type': rule.nat_type if hasattr(rule, 'nat_type') else 'unknown',
         }
-
-    def _get_mock_policies(self) -> List[Dict]:
-        """
-        Get mock NAT policies for dry-run mode.
-
-        Returns:
-            List of mock NAT policy dictionaries.
-        """
-        return [
-            {
-                'name': 'mock-nat-pre-rule-1',
-                'type': 'nat-pre-rule',
-                'source_zones': ['untrust'],
-                'destination_zones': ['dmz'],
-                'source_addresses': ['any'],
-                'destination_addresses': ['10.0.0.0/8'],
-                'service': 'service-https',
-                'description': 'Mock NAT pre-rule 1',
-                'device_group': None,
-                'disabled': False,
-                'nat_type': 'ipv4'
-            }
-        ]
-
-    def _get_mock_device_groups(self) -> List[Dict]:
-        """
-        Get mock device groups for dry-run mode.
-
-        Returns:
-            List of mock device group dictionaries.
-        """
-        return [
-            {'name': 'Default'},
-            {'name': 'Engineering'},
-            {'name': 'Finance'}
-        ]
-
-    def _get_mock_pre_rules(self) -> List[Dict]:
-        """
-        Get mock NAT pre-rules for dry-run mode.
-
-        Returns:
-            List of mock NAT pre-rule dictionaries.
-        """
-        return [
-            {
-                'name': 'mock-nat-pre-rule-1',
-                'type': 'nat-pre-rule',
-                'source_zones': ['untrust'],
-                'destination_zones': ['dmz'],
-                'source_addresses': ['any'],
-                'destination_addresses': ['10.0.0.0/8'],
-                'service': 'service-https',
-                'description': 'Mock NAT pre-rule 1',
-                'device_group': None,
-                'disabled': False,
-                'nat_type': 'ipv4'
-            }
-        ]
-
-    def _get_mock_device_group_policies(self, group_name: str) -> List[Dict]:
-        """
-        Get mock NAT policies for a device group.
-
-        Args:
-            group_name: Name of the device group.
-
-        Returns:
-            List of mock NAT policy dictionaries.
-        """
-        return []
